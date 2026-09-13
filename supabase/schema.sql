@@ -137,6 +137,10 @@ create policy "players: editar los propios, o cualquiera si sos entrenador"
   using (owner_id = auth.uid() or public.is_coach())
   with check (owner_id = auth.uid() or public.is_coach());
 
+create policy "players: borrar los propios, o cualquiera si sos entrenador"
+  on public.players for delete
+  using (owner_id = auth.uid() or public.is_coach());
+
 -- ---------------------------------------------------------------
 -- 3) ENTRADAS — con dueño y la restricción real de C.A.R.F.
 -- ---------------------------------------------------------------
@@ -190,5 +194,96 @@ create policy "entries: cargar entradas propias (CARF sólo entrenador)"
 -- ---------------------------------------------------------------
 grant usage on schema public to authenticated;
 grant select, update on public.profiles to authenticated;
-grant select, insert, update on public.players to authenticated;
+grant select, insert, update, delete on public.players to authenticated;
 grant select, insert on public.entries to authenticated;
+
+-- ---------------------------------------------------------------
+-- 5) VIDEOS de entrenamiento — privados por jugador
+--    (solo el entrenador y la familia dueña de ese jugador los ven)
+-- ---------------------------------------------------------------
+create table if not exists public.videos (
+  id text primary key,
+  player_id text not null references public.players(id) on delete cascade,
+  storage_path text not null,       -- ej: "<player_id>/1699999999-entrenamiento.mp4"
+  file_name text not null,          -- nombre original del archivo
+  note text default '',
+  uploaded_by uuid references public.profiles(id),
+  created_at timestamptz not null default now()
+);
+
+alter table public.videos enable row level security;
+drop policy if exists "videos: ver los del jugador propio, o todos si sos entrenador" on public.videos;
+drop policy if exists "videos: subir si sos dueño o entrenador" on public.videos;
+drop policy if exists "videos: borrar los propios o si sos entrenador" on public.videos;
+
+create policy "videos: ver los del jugador propio, o todos si sos entrenador"
+  on public.videos for select
+  using (
+    exists (
+      select 1 from public.players p
+      where p.id = videos.player_id
+        and (p.owner_id = auth.uid() or public.is_coach())
+    )
+  );
+
+create policy "videos: subir si sos dueño o entrenador"
+  on public.videos for insert
+  with check (
+    uploaded_by = auth.uid()
+    and public.can_write()
+    and exists (
+      select 1 from public.players p
+      where p.id = videos.player_id
+        and (p.owner_id = auth.uid() or public.is_coach())
+    )
+  );
+
+create policy "videos: borrar los propios o si sos entrenador"
+  on public.videos for delete
+  using (uploaded_by = auth.uid() or public.is_coach());
+
+grant select, insert, delete on public.videos to authenticated;
+
+-- Bucket de Storage privado para los archivos de video en sí.
+insert into storage.buckets (id, name, public)
+values ('videos', 'videos', false)
+on conflict (id) do nothing;
+
+drop policy if exists "videos storage: ver si sos dueño o entrenador" on storage.objects;
+drop policy if exists "videos storage: subir si sos dueño o entrenador" on storage.objects;
+drop policy if exists "videos storage: borrar si sos dueño o entrenador" on storage.objects;
+
+create policy "videos storage: ver si sos dueño o entrenador"
+  on storage.objects for select
+  using (
+    bucket_id = 'videos'
+    and exists (
+      select 1 from public.players p
+      where p.id = split_part(name, '/', 1)
+        and (p.owner_id = auth.uid() or public.is_coach())
+    )
+  );
+
+create policy "videos storage: subir si sos dueño o entrenador"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'videos'
+    and public.can_write()
+    and exists (
+      select 1 from public.players p
+      where p.id = split_part(name, '/', 1)
+        and (p.owner_id = auth.uid() or public.is_coach())
+    )
+  );
+
+create policy "videos storage: borrar si sos dueño o entrenador"
+  on storage.objects for delete
+  using (
+    bucket_id = 'videos'
+    and exists (
+      select 1 from public.players p
+      where p.id = split_part(name, '/', 1)
+        and (p.owner_id = auth.uid() or public.is_coach())
+    )
+  );
+

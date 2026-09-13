@@ -152,6 +152,27 @@ mismo botón lo saca de "activa" y vuelve a "trial".
 - **Stripe**: para cobrar en dólares a familias fuera de Argentina —
   hoy el chip "Tarjeta" sigue deshabilitado.
 
+## Borrar un jugador
+
+Entrando a la ficha del jugador → "Editar" → botón rojo **"🗑 Eliminar
+jugador"** al final (pide confirmación). Al borrar un jugador se
+borran también, automáticamente, todas sus sesiones, partidos, zonas
+y videos — no queda nada suelto. Lo puede borrar la familia dueña de
+ese jugador, o el entrenador.
+
+## Instalar la app en el celular (ícono propio)
+
+Ya tiene todo lo necesario (manifest + íconos) para instalarse como
+cualquier app, sin pasar por ninguna tienda:
+
+- **Android/Chrome**: entrar a `mi-mvp-carf.vercel.app` → menú (⋮) →
+  "Instalar app" o "Agregar a pantalla de inicio".
+- **iPhone/Safari**: entrar a la misma dirección → botón compartir →
+  "Agregar a pantalla de inicio".
+
+Queda con el ícono real de Mi MVP y abre a pantalla completa, sin la
+barra del navegador — como una app instalada de verdad.
+
 ## Estructura de archivos
 
 ```

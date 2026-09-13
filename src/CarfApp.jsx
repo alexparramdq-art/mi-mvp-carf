@@ -52,6 +52,13 @@ async function savePlayers(players, ownerId) {
     console.error("error guardando jugadores", e);
   }
 }
+async function deletePlayer(playerId) {
+  const { error } = await supabase.from("players").delete().eq("id", playerId);
+  if (error) {
+    console.error("error borrando jugador", error);
+    throw error;
+  }
+}
 async function loadEntries(playerId) {
   try {
     const { data, error } = await supabase
@@ -765,7 +772,7 @@ function emptyPlayer() {
   };
 }
 
-function PlayerFormScreen({ initial, onBack, onSave }) {
+function PlayerFormScreen({ initial, onBack, onSave, onDelete }) {
   const [p, setP] = useState(initial || emptyPlayer());
   const set = (field, value) => setP((prev) => ({ ...prev, [field]: value }));
 
@@ -980,6 +987,30 @@ function PlayerFormScreen({ initial, onBack, onSave }) {
       </button>
 
       <PrimaryButton onClick={() => onSave(p)}>{initial ? "Guardar cambios" : "Crear jugador"}</PrimaryButton>
+
+      {initial && onDelete && (
+        <button
+          onClick={() => {
+            if (window.confirm(`¿Seguro que querés eliminar a ${p.nombre || "este jugador"}? Se borran también sus entrenamientos, partidos y videos. Esto no se puede deshacer.`)) {
+              onDelete(initial.id);
+            }
+          }}
+          style={{
+            width: "100%",
+            background: "none",
+            border: `1px solid ${c.failed}`,
+            color: c.failed,
+            borderRadius: 10,
+            fontSize: 12.5,
+            fontWeight: 700,
+            padding: "10px 0",
+            cursor: "pointer",
+            marginTop: 10,
+          }}
+        >
+          🗑 Eliminar jugador
+        </button>
+      )}
     </Shell>
   );
 }
@@ -2581,6 +2612,17 @@ export default function CarfApp({ profile, onLogout }) {
     openPlayer(p.id);
   };
 
+  const handleDeletePlayer = async (playerId) => {
+    try {
+      await deletePlayer(playerId);
+      setPlayers((prev) => prev.filter((pl) => pl.id !== playerId));
+      setScreen({ name: "home" });
+    } catch (e) {
+      console.error(e);
+      setError("No se pudo eliminar el jugador.");
+    }
+  };
+
   const handleSaveEntry = async (entry) => {
     const playerId = screen.playerId;
     const next = [...entries, entry];
@@ -2657,6 +2699,7 @@ export default function CarfApp({ profile, onLogout }) {
         initial={player}
         onBack={() => openPlayer(screen.playerId)}
         onSave={handleSavePlayer}
+        onDelete={handleDeletePlayer}
       />
     );
   }
