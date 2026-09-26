@@ -1789,56 +1789,70 @@ function evalTotals(attempts) {
 function EvaluacionCarfScreen({ players, onBack, onSaveOne, userId }) {
   const [seleccionados, setSeleccionados] = useState([]);
   const [paso, setPaso] = useState("elegir"); // "elegir" | "completar" | "listo"
-  const [idx, setIdx] = useState(0);
+  const [activo, setActivo] = useState(null); // id del jugador que se está marcando ahora
   const [fecha, setFecha] = useState(todayISO());
   const [turno, setTurno] = useState("");
   const [open, setOpen] = useState({});
-  const [attempts, setAttempts] = useState(emptyEvalAttempts());
+  const [attemptsByPlayer, setAttemptsByPlayer] = useState({});
   const [guardando, setGuardando] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [enviados, setEnviados] = useState([]); // ids ya guardados con éxito
 
   const toggleSel = (id) => setSeleccionados((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const toggleOpen = (k) => setOpen((p) => ({ ...p, [k]: !p[k] }));
-  const toggleDot = (item, i, v) => setAttempts((prev) => ({ ...prev, [item]: prev[item].map((s, idx2) => (idx2 === i ? v : s)) }));
+  const toggleDot = (item, i, v) =>
+    setAttemptsByPlayer((prev) => ({
+      ...prev,
+      [activo]: { ...prev[activo], [item]: prev[activo][item].map((s, idx2) => (idx2 === i ? v : s)) },
+    }));
 
-  const jugadorActual = players.find((p) => p.id === seleccionados[idx]);
-  const { correct, failed } = evalTotals(attempts);
+  const jugadorActivo = players.find((p) => p.id === activo);
+  const attemptsActivo = attemptsByPlayer[activo] || emptyEvalAttempts();
+  const { correct, failed } = evalTotals(attemptsActivo);
   const marked = correct + failed;
   const pct = marked > 0 ? Math.round((correct / marked) * 100) : 0;
 
   const empezarCompletar = () => {
     if (seleccionados.length === 0) return;
-    setIdx(0);
-    setAttempts(emptyEvalAttempts());
+    const init = {};
+    seleccionados.forEach((id) => { init[id] = emptyEvalAttempts(); });
+    setAttemptsByPlayer(init);
+    setActivo(seleccionados[0]);
+    setEnviados([]);
     setPaso("completar");
   };
 
-  const confirmarYEnviar = async () => {
-    if (!jugadorActual) return;
+  const guardarYEnviarTodos = async () => {
     setErrorMsg("");
     setGuardando(true);
-    const entry = {
-      id: uid(),
-      tipo: "evaluacion_carf",
-      fecha,
-      resumen: `Turno ${turno || "-"} · ${pct}% efectividad`,
-      data: { turno, attempts, totales: { correct, failed, pct } },
-    };
-    try {
-      await onSaveOne(jugadorActual.id, entry);
-      if (idx + 1 < seleccionados.length) {
-        setIdx(idx + 1);
-        setAttempts(emptyEvalAttempts());
-        setOpen({});
-      } else {
-        setPaso("listo");
+    const yaEnviados = [...enviados];
+    for (const playerId of seleccionados) {
+      if (yaEnviados.includes(playerId)) continue;
+      const at = attemptsByPlayer[playerId] || emptyEvalAttempts();
+      const totalesJugador = evalTotals(at);
+      const m2 = totalesJugador.correct + totalesJugador.failed;
+      const p2 = m2 > 0 ? Math.round((totalesJugador.correct / m2) * 100) : 0;
+      const entry = {
+        id: uid(),
+        tipo: "evaluacion_carf",
+        fecha,
+        resumen: `Turno ${turno || "-"} · ${p2}% efectividad`,
+        data: { turno, attempts: at, totales: { correct: totalesJugador.correct, failed: totalesJugador.failed, pct: p2 } },
+      };
+      try {
+        await onSaveOne(playerId, entry);
+        yaEnviados.push(playerId);
+        setEnviados([...yaEnviados]);
+      } catch (e) {
+        console.error(e);
+        const nombreFallido = players.find((p) => p.id === playerId)?.nombre || "un jugador";
+        setErrorMsg(`No se pudo guardar la evaluación de ${nombreFallido}. Los demás ya se guardaron bien — volvé a tocar el botón para reintentar solo este.`);
+        setGuardando(false);
+        return;
       }
-    } catch (e) {
-      console.error(e);
-      setErrorMsg("No se pudo guardar esta evaluación. Probá de nuevo.");
-    } finally {
-      setGuardando(false);
     }
+    setGuardando(false);
+    setPaso("listo");
   };
 
   if (paso === "listo") {
@@ -1848,7 +1862,7 @@ function EvaluacionCarfScreen({ players, onBack, onSaveOne, userId }) {
         <div style={{ textAlign: "center", padding: "30px 10px" }}>
           <div style={{ fontSize: 34, marginBottom: 10 }}>✅</div>
           <div style={{ color: c.text, fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
-            ¡Listo! Se envió la evaluación a {seleccionados.length === 1 ? "la familia" : "las familias"}.
+            ¡Listo! Se envió la evaluación a {seleccionados.length === 1 ? "la familia" : `las ${seleccionados.length} familias`}.
           </div>
           <div style={{ color: c.textDim, fontSize: 12 }}>Ya quedó cargada en la ficha de cada jugador, sin poder editarse.</div>
         </div>
@@ -1862,7 +1876,7 @@ function EvaluacionCarfScreen({ players, onBack, onSaveOne, userId }) {
       <Shell>
         <TopBar title="Evaluación C.A.R.F." onBack={onBack} />
         <div style={{ color: c.textDim, fontSize: 11.5, marginBottom: 14, lineHeight: 1.5 }}>
-          Elegí a los jugadores del turno de hoy. Vas a completar una planilla por cada uno, de a una — se guarda y se envía a su familia recién cuando confirmes cada una (no se puede editar después).
+          Elegí a los jugadores del turno de hoy. Vas a verlos a todos juntos, en pestañas, para ir marcando a cada uno mientras entrenan, sin tener que ir y volver — recién al final se guarda y se envía todo junto.
         </div>
         {players.length === 0 && <div style={{ color: c.textDim, fontSize: 13 }}>Todavía no hay jugadores cargados.</div>}
         {players.map((p) => (
@@ -1919,15 +1933,52 @@ function EvaluacionCarfScreen({ players, onBack, onSaveOne, userId }) {
           <img src={LOGO_PLACEHOLDER} alt="C.A.R.F." style={{ height: 34 }} />
         </div>
         <div style={{ color: c.yellow, fontWeight: 800, fontSize: 15, letterSpacing: 0.5 }}>EVALUACIÓN C.A.R.F.</div>
-        <div style={{ color: c.textDim, fontSize: 11, marginTop: 2 }}>
-          {fecha} · Turno {turno || "-"} · Jugador {idx + 1} de {seleccionados.length}
-        </div>
-        <div style={{ color: c.text, fontSize: 14, fontWeight: 700, marginTop: 4 }}>{jugadorActual?.nombre}</div>
+        <div style={{ color: c.textDim, fontSize: 11, marginTop: 2 }}>{fecha} · Turno {turno || "-"}</div>
       </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+        {seleccionados.map((id) => {
+          const p = players.find((pl) => pl.id === id);
+          const at = attemptsByPlayer[id] || {};
+          const r = evalTotals(at);
+          const m = r.correct + r.failed;
+          const yaEnviado = enviados.includes(id);
+          return (
+            <button
+              key={id}
+              onClick={() => setActivo(id)}
+              style={{
+                border: `1.5px solid ${activo === id ? c.yellow : yaEnviado ? c.correct : c.cardEdge}`,
+                background: activo === id ? c.yellow : "transparent",
+                color: activo === id ? "#0A0A0A" : yaEnviado ? c.correct : c.text,
+                borderRadius: 20,
+                padding: "6px 12px",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {yaEnviado ? "✓ " : ""}
+              {p?.nombre || "Jugador"} {m > 0 && !yaEnviado ? `(${m})` : ""}
+            </button>
+          );
+        })}
+      </div>
+
+      {jugadorActivo && (
+        <div style={{ color: c.text, fontSize: 14, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>{jugadorActivo.nombre}</div>
+      )}
+
+      {enviados.includes(activo) && (
+        <div style={{ color: c.correct, fontSize: 11.5, textAlign: "center", marginBottom: 10 }}>
+          Esta evaluación ya se envió — no se puede editar.
+        </div>
+      )}
 
       {Object.entries(CATEGORIAS_EVAL_CARF).map(([categoria, items]) => {
         let catCorrect = 0, catFailed = 0;
-        items.forEach((i) => { const r = countStates(attempts[i]); catCorrect += r.correct; catFailed += r.failed; });
+        items.forEach((i) => { const r = countStates(attemptsActivo[i]); catCorrect += r.correct; catFailed += r.failed; });
         const catMarked = catCorrect + catFailed;
         const catPct = catMarked > 0 ? Math.round((catCorrect / catMarked) * 100) : 0;
         const isOpen = !!open[categoria];
@@ -1945,7 +1996,12 @@ function EvaluacionCarfScreen({ players, onBack, onSaveOne, userId }) {
             {isOpen && (
               <div style={{ marginTop: 10 }}>
                 {items.map((item) => (
-                  <ItemRow key={item} label={item} states={attempts[item]} onSetState={(i, v) => toggleDot(item, i, v)} />
+                  <ItemRow
+                    key={item}
+                    label={item}
+                    states={attemptsActivo[item]}
+                    onSetState={enviados.includes(activo) ? () => {} : (i, v) => toggleDot(item, i, v)}
+                  />
                 ))}
               </div>
             )}
@@ -1955,19 +2011,15 @@ function EvaluacionCarfScreen({ players, onBack, onSaveOne, userId }) {
 
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: c.text, fontWeight: 700 }}>
-          <span>Total: {correct} logrados / {failed} a trabajar</span>
+          <span>Total ({jugadorActivo?.nombre}): {correct} logrados / {failed} a trabajar</span>
           <span>{marked > 0 ? `${pct}%` : "—"}</span>
         </div>
       </Card>
 
       {errorMsg && <div style={{ color: c.failed, fontSize: 12, padding: "8px 2px" }}>{errorMsg}</div>}
 
-      <PrimaryButton onClick={confirmarYEnviar} disabled={guardando}>
-        {guardando
-          ? "Guardando..."
-          : idx + 1 < seleccionados.length
-          ? "Confirmar y enviar — siguiente jugador"
-          : "Confirmar y enviar — finalizar"}
+      <PrimaryButton onClick={guardarYEnviarTodos} disabled={guardando}>
+        {guardando ? "Guardando..." : `Guardar y enviar a los ${seleccionados.length} jugadores`}
       </PrimaryButton>
     </Shell>
   );
