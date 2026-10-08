@@ -460,7 +460,7 @@ function FeatureRow({ f }) {
 // =====================================================================
 // HOME — lista de jugadores
 // =====================================================================
-function HomeScreen({ players, onOpenPlayer, onNewPlayer, onOpenMetodo, onOpenFamilias, onOpenEvaluacionCarf, loading, isCoach, canWrite, subscriptionStatus, userId, userEmail }) {
+function HomeScreen({ players, onOpenPlayer, onNewPlayer, onDeletePlayer, onOpenMetodo, onOpenFamilias, onOpenEvaluacionCarf, loading, isCoach, canWrite, subscriptionStatus, userId, userEmail }) {
   const ALIAS_TRANSFERENCIA = "chueco.madero.basico";
   const [mostrarTransferencia, setMostrarTransferencia] = useState(false);
   const [moneda, setMoneda] = useState("usd"); // "usd" | "ars"
@@ -732,7 +732,23 @@ function HomeScreen({ players, onOpenPlayer, onNewPlayer, onOpenMetodo, onOpenFa
               {p.posicionPrincipal || "Posición no cargada"} {p.clubActual ? `· ${p.clubActual}` : ""}
             </div>
           </div>
-          <span style={{ color: c.textDim }}>›</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {onDeletePlayer && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (window.confirm(`¿Eliminar a ${p.nombre || "este jugador"}? Se borran también sus entrenamientos, partidos y videos. Esto no se puede deshacer.`)) {
+                    onDeletePlayer(p.id);
+                  }
+                }}
+                style={{ background: "none", border: "none", color: c.failed, fontSize: 15, cursor: "pointer", padding: 4, lineHeight: 1 }}
+                title="Eliminar jugador"
+              >
+                🗑
+              </button>
+            )}
+            <span style={{ color: c.textDim }}>›</span>
+          </div>
         </div>
       ))}
 
@@ -3105,6 +3121,7 @@ export default function CarfApp({ profile, onLogout }) {
           onOpenMetodo={() => setScreen({ name: "metodo" })}
           onOpenFamilias={() => setScreen({ name: "familias" })}
           onOpenEvaluacionCarf={() => setScreen({ name: "evaluacion-carf" })}
+          onDeletePlayer={handleDeletePlayer}
           isCoach={isCoach}
           canWrite={canWrite}
           subscriptionStatus={profile?.subscription_status}
